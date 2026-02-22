@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Viewer for Notion</title>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: transparent; }
+        model-viewer {
+            width: 100%;
+            height: 100%;
+            background-color: #000000; /* 노션 배경색에 맞춰 수정 가능 */
+            --poster-color: transparent;
+        }
+        .controls { position: absolute; bottom: 16px; right: 16px; }
+    </style>
+</head>
+<body>
+
+    <model-viewer 
+        src="air-test.glb" 
+        camera-controls 
+        auto-rotate
+        bounds="tight"
+        enable-pan
+        touch-action="pan-y" 
+        autoplay 
+        shadow-intensity="1" 
+        camera-orbit="45deg 75deg 105%"
+        alt="Blender 3D Model">
+        
+        <div class="controls">
+        </div>
+    </model-viewer>
+
+</body>
+</html>

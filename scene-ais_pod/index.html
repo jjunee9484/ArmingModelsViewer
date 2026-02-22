@@ -20,18 +20,17 @@
     <model-viewer 
         id="main-viewer"
         src="anim-ais_pod.glb"
-        camera-controls 
-        /* auto-rotate */
+        <!-- camera-controls  -->
+        <!-- enable-pan -->
         bounds="tight"
-        enable-pan
 
         /* --- 애니메이션 필수 속성 --- */
         autoplay                /* 자동 재생 */
-        animation-name="M-4Action" /* 특정 애니메이션 이름 (선택 사항) */
+        animation-name="Animation" /* 특정 애니메이션 이름 (선택 사항) */
         animation-crossfade-duration="0.3" /* 애니메이션 전환 시 부드럽게 */
         
         shadow-intensity="1" 
-        camera-orbit="-90deg 75deg 120%"
+        <!-- camera-orbit="-90deg 75deg 120%" -->
         alt="Blender 3D Model">
     </model-viewer>
 </body>

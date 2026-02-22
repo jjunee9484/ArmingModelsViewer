@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Viewer for Notion</title>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+    
+    <style>
+        /* 전체 레이아웃 */
+        body { margin: 0; background: #000; overflow-x: auto; overflow-y: hidden; }
+        
+        /* 화면에 고정될 뷰어 */
+        #main-viewer {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            z-index: 1;
+        }
+
+        /* 실제 스크롤 길이를 만들어줄 투명 요소 (애니메이션 길이에 비례) */
+        .scroll-spacer {
+            width: 5000px; /* 이 수치가 클수록 스크롤이 길어지고 애니메이션이 느려짐 */
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+
+    <model-viewer 
+        id="main-viewer"
+        src="anim-ais_pod.glb"
+        camera-controls 
+        enable-pan
+        /* auto-rotate */
+        bounds="tight"
+
+        /* --- 애니메이션 필수 속성 --- */
+        autoplay                /* 자동 재생 */
+        animation-name="M-4Action" /* 특정 애니메이션 이름 (선택 사항) */
+        animation-crossfade-duration="0.3" /* 애니메이션 전환 시 부드럽게 */
+        
+        shadow-intensity="1" 
+        camera-orbit="-90deg 75deg 120%"
+        alt="Blender 3D Model">
+    </model-viewer>
+
+    <model-viewer 
+        id="main-viewer"
+        src="anim-ais_pod.glb"
+        shadow-intensity="1"
+        bounds="tight"
+        camera-orbit="45deg 75deg 105%">
+    </model-viewer>
+
+    <div class="scroll-spacer"></div>
+
+    <script>
+        const viewer = document.querySelector('#main-viewer');
+        const spacer = document.querySelector('.scroll-spacer');
+
+        viewer.addEventListener('load', () => {
+            // 1. 애니메이션 준비 (자동 재생 방지)
+            viewer.pause();
+            
+            // 2. 스크롤 이벤트 리스너
+            window.addEventListener('scroll', () => {
+                // 현재 가로 스크롤 위치 계산
+                const maxScroll = spacer.offsetWidth - window.innerWidth;
+                const scrollFraction = window.scrollX / maxScroll;
+                
+                // 3. 애니메이션 시간 설정
+                // 모델에 포함된 첫 번째 애니메이션의 전체 길이를 가져옵니다.
+                const duration = viewer.duration;
+                if (duration > 0) {
+                    viewer.currentTime = scrollFraction * duration;
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>

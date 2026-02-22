@@ -6,27 +6,58 @@
     <title>3D Viewer for Notion</title>
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
     
-    <style>
-        /* 전체 레이아웃 */
-        body { margin: 0; background: #000; overflow-x: auto; overflow-y: hidden; }
-        
-        /* 화면에 고정될 뷰어 */
-        #main-viewer {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100vw; height: 100vh;
-            z-index: 1;
-        }
+<style>
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+    
+    #main-viewer {
+        width: 100%; height: 100%;
+    }
 
-        /* 실제 스크롤 길이를 만들어줄 투명 요소 (애니메이션 길이에 비례) */
-        .scroll-spacer {
-            width: 5000px; /* 이 수치가 클수록 스크롤이 길어지고 애니메이션이 느려짐 */
-            height: 100vh;
-        }
-    </style>
+    /* 하단 슬라이더 컨테이너 */
+    .controls-container {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 80%;
+        max-width: 500px;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+
+    /* 슬라이더 디자인 */
+    #anim-slider {
+        -webkit-appearance: none;
+        width: 100%;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 5px;
+        outline: none;
+    }
+
+    #anim-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 20px;
+        height: 20px;
+        background: #007acc; /* 포인트 컬러 */
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+
+    .time-label {
+        color: white;
+        font-family: sans-serif;
+        font-size: 12px;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    }
+</style>
 </head>
-<body>
 
+<body>
     <model-viewer 
         id="main-viewer"
         src="anim-ais_pod.glb"
@@ -44,31 +75,39 @@
         alt="Blender 3D Model">
     </model-viewer>
 
-    <div class="scroll-spacer"></div>
+    <div class="controls-container">
+        <div class="time-label" id="time-display">0:00 / 0:00</div>
+        <input type="range" id="anim-slider" min="0" max="100" value="0">
+    </div>
 
     <script>
         const viewer = document.querySelector('#main-viewer');
-        const spacer = document.querySelector('.scroll-spacer');
+        const slider = document.querySelector('#anim-slider');
+        const timeDisplay = document.querySelector('#time-display');
 
         viewer.addEventListener('load', () => {
-            // 1. 애니메이션 준비 (자동 재생 방지)
-            viewer.pause();
-            
-            // 2. 스크롤 이벤트 리스너
-            window.addEventListener('scroll', () => {
-                // 현재 가로 스크롤 위치 계산
-                const maxScroll = spacer.offsetWidth - window.innerWidth;
-                const scrollFraction = window.scrollX / maxScroll;
+            viewer.pause(); // 자동 재생 중지
+            const duration = viewer.duration; // 애니메이션 전체 시간 (초)
+
+            // 슬라이더 조작 시 애니메이션 프레임 이동
+            slider.addEventListener('input', () => {
+                const val = slider.value; // 0 ~ 100
+                const seekTime = (val / 100) * duration;
+                viewer.currentTime = seekTime;
                 
-                // 3. 애니메이션 시간 설정
-                // 모델에 포함된 첫 번째 애니메이션의 전체 길이를 가져옵니다.
-                const duration = viewer.duration;
-                if (duration > 0) {
-                    viewer.currentTime = scrollFraction * duration;
-                }
+                // 시간 표시 업데이트
+                updateTimeLabel(seekTime, duration);
             });
+
+            function updateTimeLabel(current, total) {
+                timeDisplay.innerText = `${current.toFixed(2)}s / ${total.toFixed(2)}s`;
+            }
+            
+            // 초기 시간 표시
+            updateTimeLabel(0, duration);
         });
     </script>
+
 </body>
 
 </html>

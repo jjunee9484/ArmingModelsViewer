@@ -10,30 +10,37 @@
         model-viewer {
             width: 100%;
             height: 100%;
-            background-color: #000000; /* 노션 배경색에 맞춰 수정 가능 */
+            background-color: #ffffff; 
             --poster-color: transparent;
         }
-        .controls { position: absolute; bottom: 16px; right: 16px; }
     </style>
 </head>
 <body>
 
     <model-viewer 
-        src="air-test.glb" 
-        poster="air-test.png"
+        id="main-viewer"
+        src="default.glb"
         camera-controls 
         auto-rotate
         bounds="tight"
         enable-pan
-        touch-action="pan-y" 
         autoplay 
         shadow-intensity="1" 
         camera-orbit="45deg 75deg 105%"
         alt="Blender 3D Model">
-        
-        <div slot="poster" style="width:100%; height:100%; background-image: url('air-test.png'); background-size: contain; background-repeat: no-repeat; background-position: center;">
-        </div>
     </model-viewer>
 
+    <script>
+    // URL에서 'model' 파라미터 값을 가져옴 (예: ?model=robot)
+    const urlParams = new URLSearchParams(window.location.search);
+    const modelName = urlParams.get('model');
+
+    if (modelName) {
+        const viewer = document.getElementById('main-viewer');
+        // 해당 이름의 glb 파일로 교체
+        viewer.src = `${modelName}.glb`;
+    }
+    </script>
 </body>
+
 </html>

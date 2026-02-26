@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Blender Web Viewer - Camera Switch</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #ffffff; font-family: sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; z-index: 10; display: flex; gap: 10px; }
+        button { 
+            padding: 10px 20px; cursor: pointer; background: #333; color: white; 
+            border: none; border-radius: 5px; font-weight: bold; 
+        }
+        button:hover { background: #555; }
+        .active { background: #4a90e2; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <button id="freeCamBtn" class="active">자유 시점</button>
+        <button id="blenderCamBtn">블렌더 카메라</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        let scene, renderer, controls, mixer, clock;
+        let defaultCamera, blenderCamera, activeCamera;
+
+        init();
+        loadAnimFile(); // 파일 자동 로드 호출
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xffffff);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // 1. 기본 카메라 (자유 시점용)
+            defaultCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            defaultCamera.position.set(5, 5, 5);
+            activeCamera = defaultCamera;
+
+            // 2. 컨트롤 (자유 시점용)
+            controls = new OrbitControls(defaultCamera, renderer.domElement);
+            controls.enableDamping = true;
+
+            // 3. 조명 (그림자 없는 아주 밝은 조명)
+            const light = new THREE.AmbientLight(0xffffff, 3.0);
+            scene.add(light);
+
+            clock = new THREE.Clock();
+
+            // 4. 버튼 이벤트 설정
+            document.getElementById('freeCamBtn').onclick = () => switchCamera('free');
+            document.getElementById('blenderCamBtn').onclick = () => switchCamera('blender');
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // 특정 파일(anim.glb) 자동 로드
+        function loadAnimFile() {
+            const loader = new GLTFLoader();
+            // 같은 폴더 내의 anim.glb 파일을 불러옵니다.
+            loader.load('./anim.glb', (gltf) => {
+                const model = gltf.scene;
+                scene.add(model);
+
+                // 애니메이션 재생
+                mixer = new THREE.AnimationMixer(model);
+                gltf.animations.forEach(clip => mixer.clipAction(clip).play());
+
+                // 블렌더 카메라가 있다면 저장해둠
+                if (gltf.cameras.length > 0) {
+                    blenderCamera = gltf.cameras[0];
+                    blenderCamera.aspect = window.innerWidth / window.innerHeight;
+                    blenderCamera.updateProjectionMatrix();
+                } else {
+                    document.getElementById('blenderCamBtn').innerText = "카메라 데이터 없음";
+                    document.getElementById('blenderCamBtn').disabled = true;
+                }
+            }, undefined, (err) => {
+                console.error("파일 로드 실패: anim.glb 파일이 경로에 있는지 확인하세요.");
+            });
+        }
+
+        // 카메라 전환 로직
+        function switchCamera(type) {
+            const freeBtn = document.getElementById('freeCamBtn');
+            const blenderBtn = document.getElementById('blenderCamBtn');
+
+            if (type === 'free') {
+                activeCamera = defaultCamera;
+                controls.enabled = true; // 자유 시점일 때는 마우스 조작 켬
+                freeBtn.classList.add('active');
+                blenderBtn.classList.remove('active');
+            } else if (type === 'blender' && blenderCamera) {
+                activeCamera = blenderCamera;
+                controls.enabled = false; // 블렌더 시점일 때는 마우스 조작 끔 (애니메이션에 맡김)
+                blenderBtn.classList.add('active');
+                freeBtn.classList.remove('active');
+            }
+        }
+
+        function onWindowResize() {
+            const aspect = window.innerWidth / window.innerHeight;
+            defaultCamera.aspect = aspect;
+            defaultCamera.updateProjectionMatrix();
+            if (blenderCamera) {
+                blenderCamera.aspect = aspect;
+                blenderCamera.updateProjectionMatrix();
+            }
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            
+            if (mixer) mixer.update(delta);
+            if (controls.enabled) controls.update();
+            
+            // 현재 활성화된 카메라로 렌더링
+            renderer.render(scene, activeCamera);
+        }
+    </script>
+</body>
+</html>

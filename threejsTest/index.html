@@ -2,23 +2,33 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Blender Web Viewer - Camera Switch</title>
+    <title>Blender Viewer - Dual Outline & Camera Control</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #ffffff; font-family: sans-serif; }
-        #ui { position: absolute; top: 20px; left: 20px; z-index: 10; display: flex; gap: 10px; }
-        button { 
-            padding: 10px 20px; cursor: pointer; background: #333; color: white; 
-            border: none; border-radius: 5px; font-weight: bold; 
+        body { margin: 0; overflow: hidden; background: #1a1a1a; font-family: sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; z-index: 10; display: flex; flex-direction: column; gap: 10px; }
+        .btn-group { display: flex; gap: 5px; }
+        button, label { 
+            padding: 10px 15px; cursor: pointer; background: rgba(40, 40, 40, 0.9); color: white; 
+            border: 1px solid #444; border-radius: 6px; font-weight: bold; font-size: 12px; transition: 0.3s;
         }
-        button:hover { background: #555; }
-        .active { background: #4a90e2; }
+        button:hover, label:hover { background: #555; }
+        button:disabled { opacity: 0.3; cursor: not-allowed; }
+        .active { background: #4a90e2 !important; border-color: #6fb1fc !important; }
+        #fileInput { display: none; }
+        .upload-btn { background: #27ae60 !important; }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <button id="blenderCamBtn">고정 카메라</button>
-        <button id="freeCamBtn" class="active">자유 카메라</button>
+        <div class="btn-group">
+            <input type="file" id="fileInput" accept=".glb,.gltf">
+            <label for="fileInput" class="upload-btn">📂 OPEN GLB</label>
+        </div>
+        <div class="btn-group">
+            <button id="blenderCamBtn" disabled>FIXED CAM</button>
+            <button id="freeCamBtn" class="active">FREE CAM</button>
+        </div>
     </div>
 
     <script type="importmap">
@@ -30,129 +40,123 @@
         }
     </script>
 
-    // ... (위쪽 HTML/CSS는 동일)
-
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        let scene, renderer, controls, mixer, clock;
+        let scene, renderer, controls, mixer, clock, currentModel;
         let defaultCamera, blenderCamera, activeCamera;
 
-        // 자유 카메라 초기 위치 설정값
-        const INITIAL_FREE_CAM_POS = { x: 5, y: 5, z: 5 };
-
         init();
-        loadAnimFile();
         animate();
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x111111); // 배경을 약간 어둡게 해서 조명 효과 강조
-
+            scene.background = new THREE.Color(0x1a1a1a);
+            const ambient = new THREE.AmbientLight(0xffffff, 2.5); // 전체 밝기 대폭 상승
+            scene.add(ambient);
+            
+            const direct = new THREE.DirectionalLight(0xffffff, 1.0); // 하이라이트 추가
+            direct.position.set(10, 10, 10);
+            scene.add(direct);
+            
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            // 렌더러 품질 설정 (그림자 및 물리 기반 렌더링 최적화)
-            renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 1.0;
+            renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            // 1. 기본 카메라
+            // 기본 자유 카메라 설정
             defaultCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-            resetFreeCamera(); // 초기 위치 설정
+            defaultCamera.position.set(5, 5, 5);
             activeCamera = defaultCamera;
 
-            // 2. 컨트롤
             controls = new OrbitControls(defaultCamera, renderer.domElement);
             controls.enableDamping = true;
 
-            // 3. 조명 리뉴얼 (너무 밝은 AmbientLight 대신 입체적 조명 배치)
-            setupLights();
-
+            scene.add(new THREE.AmbientLight(0xffffff, 2.0));
             clock = new THREE.Clock();
 
+            // UI 이벤트
             document.getElementById('freeCamBtn').onclick = () => switchCamera('free');
             document.getElementById('blenderCamBtn').onclick = () => switchCamera('blender');
+            document.getElementById('fileInput').onchange = (e) => loadLocalFile(e);
 
             window.addEventListener('resize', onWindowResize);
         }
 
-        function setupLights() {
-            // 은은한 전체 조명 (강도를 낮춤)
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-            scene.add(ambientLight);
-
-            // 메인 조명 (태양광 역할 - 대각선 위)
-            const mainLight = new THREE.DirectionalLight(0xffffff, 2.0);
-            mainLight.position.set(5, 10, 7.5);
-            scene.add(mainLight);
-
-            // 반사광 (모델의 그림자 부분을 살짝 채워줌)
-            const fillLight = new THREE.PointLight(0x4a90e2, 1.5); // 약간 푸른빛
-            fillLight.position.set(-5, 0, -5);
-            scene.add(fillLight);
-        }
-
-        function resetFreeCamera() {
-            defaultCamera.position.set(INITIAL_FREE_CAM_POS.x, INITIAL_FREE_CAM_POS.y, INITIAL_FREE_CAM_POS.z);
-            if (controls) {
-                controls.target.set(0, 0, 0); // 원점을 바라보게 초기화
-                controls.update();
-            }
-        }
-
-        function loadAnimFile() {
+        function loadModel(data) {
             const loader = new GLTFLoader();
-            loader.load('./anim.glb', (gltf) => {
-                const model = gltf.scene;
-                scene.add(model);
+            if (currentModel) scene.remove(currentModel);
+            if (mixer) mixer.stopAllAction();
 
-                mixer = new THREE.AnimationMixer(model);
+            loader.parse(data, '', (gltf) => {
+                currentModel = gltf.scene;
+
+                // --- 이중 외곽선 로직 적용 ---
+                currentModel.traverse((node) => {
+                    if (node.isMesh) {
+                        const edges = new THREE.EdgesGeometry(node.geometry, 30);
+                        
+                        const bLine = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ 
+                            color: 0x000000, transparent: true, opacity: 0.5 
+                        }));
+                        const wLine = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ 
+                            color: 0xffffff, transparent: true, opacity: 0.5 
+                        }));
+
+                        node.add(bLine);
+                        node.add(wLine);
+                    }
+                });
+
+                scene.add(currentModel);
+
+                // 애니메이션 설정
+                mixer = new THREE.AnimationMixer(currentModel);
                 gltf.animations.forEach(clip => mixer.clipAction(clip).play());
 
+                // Blender 카메라 확인
                 if (gltf.cameras.length > 0) {
                     blenderCamera = gltf.cameras[0];
                     blenderCamera.aspect = window.innerWidth / window.innerHeight;
                     blenderCamera.updateProjectionMatrix();
+                    document.getElementById('blenderCamBtn').disabled = false;
                 } else {
-                    const btn = document.getElementById('blenderCamBtn');
-                    btn.innerText = "카메라 데이터 없음";
-                    btn.disabled = true;
+                    blenderCamera = null;
+                    document.getElementById('blenderCamBtn').disabled = true;
+                    switchCamera('free');
                 }
-            }, undefined, (err) => {
-                console.error("파일 로드 실패");
             });
         }
 
         function switchCamera(type) {
-            const freeBtn = document.getElementById('freeCamBtn');
-            const blenderBtn = document.getElementById('blenderCamBtn');
+            const fBtn = document.getElementById('freeCamBtn');
+            const bBtn = document.getElementById('blenderCamBtn');
 
             if (type === 'free') {
                 activeCamera = defaultCamera;
-                resetFreeCamera(); // 전환 시 위치 초기화 호출
                 controls.enabled = true;
-                freeBtn.classList.add('active');
-                blenderBtn.classList.remove('active');
+                fBtn.classList.add('active');
+                bBtn.classList.remove('active');
             } else if (type === 'blender' && blenderCamera) {
                 activeCamera = blenderCamera;
-                controls.enabled = false;
-                blenderBtn.classList.add('active');
-                freeBtn.classList.remove('active');
+                controls.enabled = false; // 고정 카메라는 컨트롤 비활성화
+                bBtn.classList.add('active');
+                fBtn.classList.remove('active');
             }
         }
 
-        // ... (onWindowResize 및 animate 함수는 동일)
         function onWindowResize() {
-            const aspect = window.innerWidth / window.innerHeight;
-            defaultCamera.aspect = aspect;
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            defaultCamera.aspect = w / h;
             defaultCamera.updateProjectionMatrix();
             if (blenderCamera) {
-                blenderCamera.aspect = aspect;
+                blenderCamera.aspect = w / h;
                 blenderCamera.updateProjectionMatrix();
             }
-            renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
         function animate() {
@@ -161,6 +165,14 @@
             if (mixer) mixer.update(delta);
             if (controls.enabled) controls.update();
             renderer.render(scene, activeCamera);
+        }
+
+        function loadLocalFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => loadModel(e.target.result);
+            reader.readAsArrayBuffer(file);
         }
     </script>
 </body>

@@ -249,7 +249,7 @@
 
             // 몇 초 후 숨김 (슬라이더 조작 중이거나 멈춰있을 때는 유지)
             uiTimer = setTimeout(() => {
-                if (isPlaying && !isScrubbing) {
+                if (!isScrubbing) {
                     uiElements.forEach(el => el.classList.remove('is-visible'));
                     document.body.classList.add('hide-cursor');
                 }

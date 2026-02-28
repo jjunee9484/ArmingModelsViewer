@@ -2,9 +2,9 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Blender Viewer - Dual Outline & Camera Control</title>
+    <title>Blender Toon Viewer - Outline & Gradient</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #1a1a1a; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background: #444488; font-family: sans-serif; }
         #ui { position: absolute; top: 20px; left: 20px; z-index: 10; display: flex; flex-direction: column; gap: 10px; }
         .btn-group { display: flex; gap: 5px; }
         button, label { 
@@ -23,7 +23,7 @@
     <div id="ui">
         <div class="btn-group">
             <input type="file" id="fileInput" accept=".glb,.gltf">
-            <label for="fileInput" class="upload-btn">📂 OPEN GLB</label>
+            <label for="fileInput" class="upload-btn">📂 OPEN GLB (TOON)</label>
         </div>
         <div class="btn-group">
             <button id="blenderCamBtn" disabled>FIXED CAM</button>
@@ -44,37 +44,58 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 
-        let scene, renderer, controls, mixer, clock, currentModel;
+        let scene, renderer, effect, controls, mixer, clock, currentModel;
         let defaultCamera, blenderCamera, activeCamera;
+        let gradientMap;
 
         init();
         animate();
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1a1a1a);
-            const ambient = new THREE.AmbientLight(0xffffff, 2.5); // 전체 밝기 대폭 상승
-            scene.add(ambient);
-            
-            const direct = new THREE.DirectionalLight(0xffffff, 1.0); // 하이라이트 추가
-            direct.position.set(10, 10, 10);
-            scene.add(direct);
-            
+            scene.background = new THREE.Color(0x444488);
+
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            // 기본 자유 카메라 설정
+            // 1. OutlineEffect 설정 (검은색 외곽선)
+            effect = new OutlineEffect(renderer);
+
+              // 1. 256단계의 부드러운 그라데이션 배열 생성
+            const colors = new Uint8Array(256);
+            for (let i = 0; i < 256; i++) {
+                colors[i] = i; // 0부터 255까지 차례대로 채움
+            }
+            
+            // 2. 데이터 텍스처 생성
+            gradientMap = new THREE.DataTexture(colors, colors.length, 1, THREE.RedFormat);
+            
+            // 3. 핵심: 필터링을 Linear(선형)로 설정하여 픽셀 사이를 부드럽게 뭉개줌
+            gradientMap.magFilter = THREE.LinearFilter;
+            gradientMap.minFilter = THREE.LinearFilter;
+            gradientMap.generateMipmaps = false; // 성능을 위해 미입맵은 끔
+            gradientMap.needsUpdate = true;
+
+            // 카메라 설정
             defaultCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
             defaultCamera.position.set(5, 5, 5);
             activeCamera = defaultCamera;
 
+            // 조명 (툰 쉐이더는 조명 위치에 따라 명암이 결정됨)
+            const ambient = new THREE.AmbientLight(0xffffff, 3.5);
+            scene.add(ambient);
+
+            const directLight = new THREE.DirectionalLight(0xffffff, 2);
+            directLight.position.set(5, 10, 7.5);
+            scene.add(directLight);
+
             controls = new OrbitControls(defaultCamera, renderer.domElement);
             controls.enableDamping = true;
 
-            scene.add(new THREE.AmbientLight(0xffffff, 2.0));
             clock = new THREE.Clock();
 
             // UI 이벤트
@@ -93,35 +114,31 @@
             loader.parse(data, '', (gltf) => {
                 currentModel = gltf.scene;
 
-                // --- 이중 외곽선 로직 적용 ---
-                currentModel.traverse((node) => {
-                    if (node.isMesh) {
-                        const edges = new THREE.EdgesGeometry(node.geometry, 30);
-                        
-                        const bLine = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ 
-                            color: 0x000000, transparent: true, opacity: 0.5 
-                        }));
-                        const wLine = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ 
-                            color: 0xffffff, transparent: true, opacity: 0.5 
-                        }));
-
-                        node.add(bLine);
-                        node.add(wLine);
+                // 3. 모델의 모든 재질을 ToonMaterial로 강제 교체
+                currentModel.traverse((child) => {
+                    if (child.isMesh) {
+                        const oldMat = child.material;
+                        child.material = new THREE.MeshToonMaterial({
+                            color: oldMat.color,
+                            map: oldMat.map, // 기존 텍스처 유지
+                            gradientMap: gradientMap // 툰 단계 적용
+                        });
                     }
                 });
 
                 scene.add(currentModel);
 
-                // 애니메이션 설정
+                // 애니메이션
                 mixer = new THREE.AnimationMixer(currentModel);
                 gltf.animations.forEach(clip => mixer.clipAction(clip).play());
 
-                // Blender 카메라 확인
+                // 카메라 체크
                 if (gltf.cameras.length > 0) {
                     blenderCamera = gltf.cameras[0];
                     blenderCamera.aspect = window.innerWidth / window.innerHeight;
                     blenderCamera.updateProjectionMatrix();
                     document.getElementById('blenderCamBtn').disabled = false;
+                    switchCamera('blender');
                 } else {
                     blenderCamera = null;
                     document.getElementById('blenderCamBtn').disabled = true;
@@ -141,7 +158,7 @@
                 bBtn.classList.remove('active');
             } else if (type === 'blender' && blenderCamera) {
                 activeCamera = blenderCamera;
-                controls.enabled = false; // 고정 카메라는 컨트롤 비활성화
+                controls.enabled = false;
                 bBtn.classList.add('active');
                 fBtn.classList.remove('active');
             }
@@ -164,7 +181,9 @@
             const delta = clock.getDelta();
             if (mixer) mixer.update(delta);
             if (controls.enabled) controls.update();
-            renderer.render(scene, activeCamera);
+
+            // 4. 일반 renderer 대신 effect(Outline)로 렌더링
+            effect.render(scene, activeCamera);
         }
 
         function loadLocalFile(event) {

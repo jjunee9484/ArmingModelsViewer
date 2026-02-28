@@ -247,7 +247,7 @@
             uiElements.forEach(el => el.classList.add('is-visible'));
             document.body.classList.remove('hide-cursor');
 
-            // 3초 후 숨김 (슬라이더 조작 중이거나 멈춰있을 때는 유지)
+            // 몇 초 후 숨김 (슬라이더 조작 중이거나 멈춰있을 때는 유지)
             uiTimer = setTimeout(() => {
                 if (isPlaying && !isScrubbing) {
                     uiElements.forEach(el => el.classList.remove('is-visible'));
@@ -375,9 +375,7 @@
                 controls.addEventListener('start', () => {
                     isResetting = false; });
             }
-            else{
-                if (controls.enabled) controls.update();
-            }
+            if (controls.enabled) controls.update();
 
             effect.render(scene, activeCamera);
         }

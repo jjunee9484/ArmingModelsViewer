@@ -339,7 +339,6 @@
                 }
             }
 
-
             // 시점 리셋 애니메이션 (부드러운 이동)
             if (isResetting) {
                 defaultCamera.position.lerp(initialPos, 0.1);
@@ -347,15 +346,15 @@
                 if (defaultCamera.position.distanceTo(initialPos) < 0.01) {
                     isResetting = false;
                 }
-
-                // 리셋 애니메이션 중이었다면 즉시 중단!
-                controls.addEventListener('start', () => {
-                    isResetting = false; });
             }
             if (controls.enabled) controls.update();
 
             effect.render(scene, activeCamera);
         }
+
+                // 리셋 애니메이션 중이었다면 즉시 중단!
+        controls.addEventListener('start', () => {
+            isResetting = false; });
 
         function onWindowResize() {
             const w = window.innerWidth, h = window.innerHeight;

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Work Process Viewer</title>
+    <style>
+        :root {
+            --accent: #4a90e2;
+            --bg-ui: rgba(15, 15, 15, 0.7);
+            --glass: blur(15px);
+            --text: rgba(255, 255, 255, 0.9);
+        }
+
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #2c3e50; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+        }
+
+        /* 공통 UI 요소 - 고정 배치 및 애니메이션 */
+        .ui-element {
+            position: fixed;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), 
+                        transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* 조작 시 나타나는 상태 */
+        .ui-element.is-visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* 왼쪽 상단: 카메라 */
+        #ui-top-left {
+            top: 25px;
+            left: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transform: translateY(-10px);
+        }
+        #ui-top-left.is-visible { transform: translateY(0); }
+
+        /* 오른쪽 상단: 리셋 */
+        #ui-top-right {
+            top: 25px;
+            right: 25px;
+            transform: translateY(-10px);
+        }
+        #ui-top-right.is-visible { transform: translateY(0); }
+
+        /* 하단 컨트롤 바: 재생 및 타임라인 */
+        #ui-bottom {
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%) translateY(15px);
+            width: 80%;
+            max-width: 600px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: var(--bg-ui);
+            padding: 12px 22px;
+            border-radius: 24px;
+            backdrop-filter: var(--glass);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        #ui-bottom.is-visible { transform: translateX(-50%) translateY(0); }
+
+        /* 버튼 및 레이블 공통 스타일 */
+        .btn-group { display: flex; gap: 8px; }
+        
+        button, label { 
+            padding: 8px 14px; 
+            cursor: pointer; 
+            background: var(--bg-ui); 
+            color: var(--text); 
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            border-radius: 10px; 
+            font-weight: 600; 
+            font-size: 11px; 
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            backdrop-filter: var(--glass); 
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        button:hover, label:hover { 
+            background: var(--accent); 
+            color: white; 
+            border-color: var(--accent);
+        }
+
+        button:disabled { opacity: 0.2; cursor: not-allowed; }
+        .active { background: var(--accent) !important; color: white; border-color: var(--accent); }
+
+        /* 재생/일시정지 버튼 */
+        #playPauseBtn {
+            background: none; border: none; font-size: 18px; color: white; 
+            cursor: pointer; padding: 0; min-width: 30px;
+        }
+
+        /* 세련된 슬라이더 조절 */
+        #timeline {
+            flex-grow: 1; cursor: pointer; height: 4px; appearance: none;
+            background: rgba(255, 255, 255, 0.15); border-radius: 2px; outline: none;
+        }
+        #timeline::-webkit-slider-thumb {
+            appearance: none; width: 14px; height: 14px; background: white; 
+            border-radius: 50%; box-shadow: 0 0 10px rgba(0,0,0,0.5); border: 2px solid var(--accent);
+        }
+
+        .hide-cursor { cursor: none; }
+
+        /* 로딩 안내 */
+        #loader-msg { 
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-weight: bold; font-size: 14px; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="loader-msg">모델을 불러오는 중...</div>
+    <div id="ui-top-left" class="ui-element">
+        <div class="btn-group">
+            <button id="blenderCamBtn" disabled>FIXED CAM</button>
+            <button id="freeCamBtn" class="active">FREE CAM</button>
+        </div>
+    </div>
+
+    <div id="ui-top-right" class="ui-element">
+        <button id="resetBtn">🔄 RESET VIEW</button>
+    </div>
+
+    <div id="ui-bottom" class="ui-element">
+        <button id="playPauseBtn">⏸</button>
+        <input type="range" id="timeline" min="0" max="100" value="0" step="0.001">
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
+
+        let scene, renderer, effect, controls, mixer, clock, currentModel, currentAction;
+        let defaultCamera, blenderCamera, activeCamera;
+        let initialPos = new THREE.Vector3(), initialTarget = new THREE.Vector3();
+        let isResetting = false, isPlaying = true, isScrubbing = false;
+
+        // UI 숨김 타이머 변수
+        let uiTimer;
+        const uiElements = document.querySelectorAll('.ui-element');
+        const timeline = document.getElementById('timeline');
+        const playBtn = document.getElementById('playPauseBtn');
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0X5d8aa8);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.body.appendChild(renderer.domElement);
+
+            effect = new OutlineEffect(renderer);
+
+            defaultCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 5000);
+            activeCamera = defaultCamera;
+
+            // 조명 설정 (툰 쉐이딩 최적화)
+            scene.add(new THREE.AmbientLight(0xffffff, 3));
+            const sun = new THREE.DirectionalLight(0xffffff, 3);
+            sun.position.set(5, 15, 10);
+            scene.add(sun);
+
+            controls = new OrbitControls(defaultCamera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            clock = new THREE.Clock();
+
+            // --- 상호작용 및 UI 자동 숨김 로직 ---
+            const triggerUI = () => showUI();
+            window.addEventListener('mousemove', triggerUI);
+            window.addEventListener('mousedown', triggerUI);
+            window.addEventListener('touchstart', triggerUI);
+
+            // 버튼 이벤트
+            document.getElementById('freeCamBtn').onclick = () => switchCamera('free');
+            document.getElementById('blenderCamBtn').onclick = () => switchCamera('blender');
+            document.getElementById('resetBtn').onclick = () => { isResetting = true; triggerUI(); };
+
+            playBtn.onclick = () => {
+                isPlaying = !isPlaying;
+                playBtn.innerText = isPlaying ? "⏸" : "▶";
+            };
+
+            // 타임라인 스크러빙(드래그) 처리
+            timeline.onmousedown = () => { isScrubbing = true; };
+            timeline.onmouseup = () => { isScrubbing = false; };
+            timeline.oninput = (e) => {
+                if (!currentAction) return;
+                mixer.setTime(parseFloat(e.target.value));
+                isPlaying = false;
+                playBtn.innerText = "▶";
+            };
+
+
+            // --- URL 쿼리 파라미터 읽기 ---
+            const urlParams = new URLSearchParams(window.location.search);
+            const modelName = urlParams.get('model'); // ?model=이름
+
+            if (modelName) {
+                loadModelFromURL(modelName);
+            } else {
+                document.getElementById('loader-msg').innerText = "URL에 ?model=파일명 을 입력해주세요.";
+            }
+
+
+            window.addEventListener('resize', onWindowResize);
+            showUI(); // 시작 시 UI 표시
+        }
+
+        function showUI() {
+            clearTimeout(uiTimer);
+            uiElements.forEach(el => el.classList.add('is-visible'));
+            document.body.classList.remove('hide-cursor');
+
+            // 3초 후 숨김 (슬라이더 조작 중이거나 멈춰있을 때는 유지)
+            uiTimer = setTimeout(() => {
+                if (isPlaying && !isScrubbing) {
+                    uiElements.forEach(el => el.classList.remove('is-visible'));
+                    document.body.classList.add('hide-cursor');
+                }
+            }, 250);
+        }
+
+        // 서버 경로에서 모델 로드
+        function loadModelFromURL(name) {
+            const loader = new GLTFLoader();
+            const filePath = `${name}.glb`;
+
+            loader.load(
+                filePath,
+                (gltf) => {
+                    document.getElementById('loader-msg').style.display = 'none';
+                    loadModel(gltf);
+                },
+                (xhr) => {
+                    const percent = Math.round((xhr.loaded / xhr.total) * 100);
+                    document.getElementById('loader-msg').innerText = `Loading: ${percent}%`;
+                },
+                (error) => {
+                    console.error(error);
+                    document.getElementById('loader-msg').innerText = "파일을 찾을 수 없습니다.";
+                }
+            );
+        }
+
+        function loadModel(data) {
+            const loader = new GLTFLoader();
+            if (currentModel) scene.remove(currentModel);
+            
+            loader.parse(data, '', (gltf) => {
+                currentModel = gltf.scene;
+
+                // 툰 쉐이딩 재질 적용
+                currentModel.traverse(c => {
+                    if (c.isMesh) {
+                        c.material = new THREE.MeshToonMaterial({ 
+                            color: c.material.color, 
+                            map: c.material.map 
+                        });
+                    }
+                });
+                scene.add(currentModel);
+
+                // 카메라 초기 뷰포트 자동 계산
+                const box = new THREE.Box3().setFromObject(currentModel);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                
+                initialTarget.copy(center);
+                initialPos.set(center.x, center.y + size.y * 0.5, -(center.z + maxDim * 1));
+                
+                controls.target.copy(initialTarget);
+                defaultCamera.position.copy(initialPos);
+                controls.update();
+
+                // 애니메이션 믹서 초기화
+                mixer = new THREE.AnimationMixer(currentModel);
+                if (gltf.animations.length > 0) {
+                    currentAction = mixer.clipAction(gltf.animations[0]);
+                    currentAction.play();
+                    timeline.max = gltf.animations[0].duration;
+                    timeline.value = 0;
+                    isPlaying = true;
+                    playBtn.innerText = "⏸";
+                }
+
+                // 블렌더 카메라 탑재 여부 확인
+                if (gltf.cameras.length > 0) {
+                    blenderCamera = gltf.cameras[0];
+                    blenderCamera.aspect = window.innerWidth / window.innerHeight;
+                    blenderCamera.updateProjectionMatrix();
+                    document.getElementById('blenderCamBtn').disabled = false;
+                    switchCamera('blender');
+                } else {
+                    document.getElementById('blenderCamBtn').disabled = true;
+                    switchCamera('free');
+                }
+            });
+        }
+
+        function switchCamera(type) {
+            const fBtn = document.getElementById('freeCamBtn');
+            const bBtn = document.getElementById('blenderCamBtn');
+            const rBtn = document.getElementById('ui-top-right');
+
+            if (type === 'free') {
+                activeCamera = defaultCamera;
+                controls.enabled = true;
+                fBtn.classList.add('active');
+                bBtn.classList.remove('active');
+                rBtn.style.display = 'block';
+            } else {
+                activeCamera = blenderCamera;
+                controls.enabled = false;
+                bBtn.classList.add('active');
+                fBtn.classList.remove('active');
+                rBtn.style.display = 'none';
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            
+            // 애니메이션 및 타임라인 동기화
+            if (mixer && isPlaying) {
+                mixer.update(delta);
+                if (currentAction) {
+                    // 루프 시 슬라이더 값 자연스럽게 갱신
+                    timeline.value = mixer.time % currentAction.getClip().duration;
+                }
+            }
+
+            // 시점 리셋 애니메이션 (부드러운 이동)
+            if (isResetting) {
+                defaultCamera.position.lerp(initialPos, 0.1);
+                controls.target.lerp(initialTarget, 0.1);
+                if (defaultCamera.position.distanceTo(initialPos) < 0.01) {
+                    isResetting = false;
+                }
+            }
+
+            if (controls.enabled) controls.update();
+            
+            controls.addEventListener('start', () => {
+                isResetting = false; // 리셋 애니메이션 중이었다면 즉시 중단!
+            });
+            effect.render(scene, activeCamera);
+        }
+
+        function onWindowResize() {
+            const w = window.innerWidth, h = window.innerHeight;
+            renderer.setSize(w, h);
+            defaultCamera.aspect = w / h;
+            defaultCamera.updateProjectionMatrix();
+            if (blenderCamera) {
+                blenderCamera.aspect = w / h;
+                blenderCamera.updateProjectionMatrix();
+            }
+        }
+
+        function loadLocalFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => loadModel(e.target.result);
+            reader.readAsArrayBuffer(file);
+        }
+    </script>
+</body>
+</html>

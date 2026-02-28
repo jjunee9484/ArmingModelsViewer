@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Work Process Viewer</title>
+    <title>Sophisticated Toon Viewer</title>
     <style>
         :root {
             --accent: #4a90e2;
@@ -35,7 +35,7 @@
             pointer-events: auto;
         }
 
-        /* 왼쪽 상단: 카메라 */
+        /* 왼쪽 상단: 파일 및 카메라 */
         #ui-top-left {
             top: 25px;
             left: 25px;
@@ -103,6 +103,11 @@
         button:disabled { opacity: 0.2; cursor: not-allowed; }
         .active { background: var(--accent) !important; color: white; border-color: var(--accent); }
 
+        /* 파일 입력 숨김 */
+        #fileInput { display: none; }
+        .upload-btn { background: #27ae60 !important; border-color: #2ecc71; }
+
+
         /* 재생/일시정지 버튼 */
         #playPauseBtn {
             background: none; border: none; font-size: 18px; color: white; 
@@ -120,17 +125,15 @@
         }
 
         .hide-cursor { cursor: none; }
-
-        /* 로딩 안내 */
-        #loader-msg { 
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: white; font-weight: bold; font-size: 14px; pointer-events: none;
-        }
     </style>
 </head>
 <body>
-    <div id="loader-msg">모델을 불러오는 중...</div>
+
     <div id="ui-top-left" class="ui-element">
+        <div class="btn-group">
+            <input type="file" id="fileInput" accept=".glb,.gltf">
+            <label for="fileInput" class="upload-btn">📂 OPEN GLB</label>
+        </div>
         <div class="btn-group">
             <button id="blenderCamBtn" disabled>FIXED CAM</button>
             <button id="freeCamBtn" class="active">FREE CAM</button>
@@ -206,7 +209,8 @@
             window.addEventListener('mousedown', triggerUI);
             window.addEventListener('touchstart', triggerUI);
 
-            // 버튼 이벤트
+            // 파일 로드 및 버튼 이벤트
+            document.getElementById('fileInput').onchange = (e) => loadLocalFile(e);
             document.getElementById('freeCamBtn').onclick = () => switchCamera('free');
             document.getElementById('blenderCamBtn').onclick = () => switchCamera('blender');
             document.getElementById('resetBtn').onclick = () => { isResetting = true; triggerUI(); };
@@ -226,18 +230,6 @@
                 playBtn.innerText = "▶";
             };
 
-
-            // --- URL 쿼리 파라미터 읽기 ---
-            const urlParams = new URLSearchParams(window.location.search);
-            const modelName = urlParams.get('model'); // ?model=이름
-
-            if (modelName) {
-                loadModelFromURL(modelName);
-            } else {
-                document.getElementById('loader-msg').innerText = "URL에 ?model=파일명 을 입력해주세요.";
-            }
-
-
             window.addEventListener('resize', onWindowResize);
             showUI(); // 시작 시 UI 표시
         }
@@ -254,28 +246,6 @@
                     document.body.classList.add('hide-cursor');
                 }
             }, 250);
-        }
-
-        // 서버 경로에서 모델 로드
-        function loadModelFromURL(name) {
-            const loader = new GLTFLoader();
-            const filePath = `${name}.glb`;
-
-            loader.load(
-                filePath,
-                (gltf) => {
-                    document.getElementById('loader-msg').style.display = 'none';
-                    loadModel(gltf);
-                },
-                (xhr) => {
-                    const percent = Math.round((xhr.loaded / xhr.total) * 100);
-                    document.getElementById('loader-msg').innerText = `Loading: ${percent}%`;
-                },
-                (error) => {
-                    console.error(error);
-                    document.getElementById('loader-msg').innerText = "파일을 찾을 수 없습니다.";
-                }
-            );
         }
 
         function loadModel(data) {

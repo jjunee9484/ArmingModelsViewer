@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sophisticated Toon Viewer</title>
+    <title>Work Process Viewer</title>
     <style>
         :root {
             --accent: #4a90e2;
@@ -35,7 +35,7 @@
             pointer-events: auto;
         }
 
-        /* 왼쪽 상단: 파일 및 카메라 */
+        /* 왼쪽 상단: 카메라 */
         #ui-top-left {
             top: 25px;
             left: 25px;
@@ -103,11 +103,6 @@
         button:disabled { opacity: 0.2; cursor: not-allowed; }
         .active { background: var(--accent) !important; color: white; border-color: var(--accent); }
 
-        /* 파일 입력 숨김 */
-        #fileInput { display: none; }
-        .upload-btn { background: #27ae60 !important; border-color: #2ecc71; }
-
-
         /* 재생/일시정지 버튼 */
         #playPauseBtn {
             background: none; border: none; font-size: 18px; color: white; 
@@ -125,15 +120,17 @@
         }
 
         .hide-cursor { cursor: none; }
+
+        /* 로딩 안내 */
+        #loader-msg { 
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-weight: bold; font-size: 14px; pointer-events: none;
+        }
     </style>
 </head>
 <body>
-
+    <div id="loader-msg">모델을 불러오는 중...</div>
     <div id="ui-top-left" class="ui-element">
-        <div class="btn-group">
-            <input type="file" id="fileInput" accept=".glb,.gltf">
-            <label for="fileInput" class="upload-btn">📂 OPEN GLB</label>
-        </div>
         <div class="btn-group">
             <button id="blenderCamBtn" disabled>FIXED CAM</button>
             <button id="freeCamBtn" class="active">FREE CAM</button>
@@ -209,8 +206,7 @@
             window.addEventListener('mousedown', triggerUI);
             window.addEventListener('touchstart', triggerUI);
 
-            // 파일 로드 및 버튼 이벤트
-            document.getElementById('fileInput').onchange = (e) => loadLocalFile(e);
+            // 버튼 이벤트
             document.getElementById('freeCamBtn').onclick = () => switchCamera('free');
             document.getElementById('blenderCamBtn').onclick = () => switchCamera('blender');
             document.getElementById('resetBtn').onclick = () => { isResetting = true; triggerUI(); };
@@ -230,6 +226,18 @@
                 playBtn.innerText = "▶";
             };
 
+
+            // URL 쿼리 파라미터 로직
+            const urlParams = new URLSearchParams(window.location.search);
+            const modelName = urlParams.get('model');
+
+            if (modelName) {
+                loadModelFromURL(modelName);
+            } else {
+                document.getElementById('loader-msg').innerText = "URL에 ?model=파일명 을 입력해주세요.";
+            }
+
+
             window.addEventListener('resize', onWindowResize);
             showUI(); // 시작 시 UI 표시
         }
@@ -248,60 +256,79 @@
             }, 250);
         }
 
-        function loadModel(data) {
+        function loadModelFromURL(name) {
+            const loader = new GLTFLoader();
+            const filePath = `${name}.glb`; // 폴더 내의 파일 경로
+
+            loader.load(
+                filePath,
+                (gltf) => {
+                    document.getElementById('loader-msg').style.display = 'none';
+                    applyModel(gltf); // 파일 로드 성공 시 applyModel 실행
+                },
+                (xhr) => {
+                    const percent = Math.round((xhr.loaded / xhr.total) * 100);
+                    document.getElementById('loader-msg').innerText = `Loading: ${percent}%`;
+                },
+                (error) => {
+                    console.error(error);
+                    document.getElementById('loader-msg').innerText = "파일을 찾을 수 없습니다.";
+                }
+            );
+        }
+
+        function applyModel(gltf) {
             const loader = new GLTFLoader();
             if (currentModel) scene.remove(currentModel);
             
-            loader.parse(data, '', (gltf) => {
-                currentModel = gltf.scene;
+            currentModel = gltf.scene;
 
-                // 툰 쉐이딩 재질 적용
-                currentModel.traverse(c => {
-                    if (c.isMesh) {
-                        c.material = new THREE.MeshToonMaterial({ 
-                            color: c.material.color, 
-                            map: c.material.map 
-                        });
-                    }
-                });
-                scene.add(currentModel);
-
-                // 카메라 초기 뷰포트 자동 계산
-                const box = new THREE.Box3().setFromObject(currentModel);
-                const size = box.getSize(new THREE.Vector3());
-                const center = box.getCenter(new THREE.Vector3());
-                const maxDim = Math.max(size.x, size.y, size.z);
-                
-                initialTarget.copy(center);
-                initialPos.set(center.x, center.y + size.y * 0.5, -(center.z + maxDim * 1));
-                
-                controls.target.copy(initialTarget);
-                defaultCamera.position.copy(initialPos);
-                controls.update();
-
-                // 애니메이션 믹서 초기화
-                mixer = new THREE.AnimationMixer(currentModel);
-                if (gltf.animations.length > 0) {
-                    currentAction = mixer.clipAction(gltf.animations[0]);
-                    currentAction.play();
-                    timeline.max = gltf.animations[0].duration;
-                    timeline.value = 0;
-                    isPlaying = true;
-                    playBtn.innerText = "⏸";
-                }
-
-                // 블렌더 카메라 탑재 여부 확인
-                if (gltf.cameras.length > 0) {
-                    blenderCamera = gltf.cameras[0];
-                    blenderCamera.aspect = window.innerWidth / window.innerHeight;
-                    blenderCamera.updateProjectionMatrix();
-                    document.getElementById('blenderCamBtn').disabled = false;
-                    switchCamera('blender');
-                } else {
-                    document.getElementById('blenderCamBtn').disabled = true;
-                    switchCamera('free');
+            // 툰 쉐이딩 재질 적용
+            currentModel.traverse(c => {
+                if (c.isMesh) {
+                    c.material = new THREE.MeshToonMaterial({ 
+                        color: c.material.color, 
+                        map: c.material.map 
+                    });
                 }
             });
+            scene.add(currentModel);
+
+            // 카메라 초기 뷰포트 자동 계산
+            const box = new THREE.Box3().setFromObject(currentModel);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            
+            initialTarget.copy(center);
+            initialPos.set(center.x, center.y + size.y * 0.5, -(center.z + maxDim * 1));
+            
+            controls.target.copy(initialTarget);
+            defaultCamera.position.copy(initialPos);
+            controls.update();
+
+            // 애니메이션 믹서 초기화
+            mixer = new THREE.AnimationMixer(currentModel);
+            if (gltf.animations.length > 0) {
+                currentAction = mixer.clipAction(gltf.animations[0]);
+                currentAction.play();
+                timeline.max = gltf.animations[0].duration;
+                timeline.value = 0;
+                isPlaying = true;
+                playBtn.innerText = "⏸";
+            }
+
+            // 블렌더 카메라 탑재 여부 확인
+            if (gltf.cameras.length > 0) {
+                blenderCamera = gltf.cameras[0];
+                blenderCamera.aspect = window.innerWidth / window.innerHeight;
+                blenderCamera.updateProjectionMatrix();
+                document.getElementById('blenderCamBtn').disabled = false;
+                switchCamera('blender');
+            } else {
+                document.getElementById('blenderCamBtn').disabled = true;
+                switchCamera('free');
+            }
         }
 
         function switchCamera(type) {
@@ -363,14 +390,6 @@
                 blenderCamera.aspect = w / h;
                 blenderCamera.updateProjectionMatrix();
             }
-        }
-
-        function loadLocalFile(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => loadModel(e.target.result);
-            reader.readAsArrayBuffer(file);
         }
     </script>
 </body>

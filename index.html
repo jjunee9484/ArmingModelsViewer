@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sophisticated Toon Viewer</title>
+    <title>Arming Viewer</title>
     <style>
         :root {
             --accent: #4a90e2;
@@ -239,7 +239,7 @@
             uiElements.forEach(el => el.classList.add('is-visible'));
             document.body.classList.remove('hide-cursor');
 
-            // 3초 후 숨김 (슬라이더 조작 중이거나 멈춰있을 때는 유지)
+            // 몇 초 후 숨김 (슬라이더 조작 중이거나 멈춰있을 때는 유지)
             uiTimer = setTimeout(() => {
                 if (isPlaying && !isScrubbing) {
                     uiElements.forEach(el => el.classList.remove('is-visible'));
@@ -273,7 +273,9 @@
                 const maxDim = Math.max(size.x, size.y, size.z);
                 
                 initialTarget.copy(center);
-                initialPos.set(center.x, center.y + size.y * 0.5, -(center.z + maxDim * 1));
+                initialPos.set(center.x, 
+                    center.y + size.y * 0.5, 
+                    -(center.z + maxDim * 1));
                 
                 controls.target.copy(initialTarget);
                 defaultCamera.position.copy(initialPos);
@@ -337,6 +339,7 @@
                 }
             }
 
+
             // 시점 리셋 애니메이션 (부드러운 이동)
             if (isResetting) {
                 defaultCamera.position.lerp(initialPos, 0.1);
@@ -344,13 +347,13 @@
                 if (defaultCamera.position.distanceTo(initialPos) < 0.01) {
                     isResetting = false;
                 }
-            }
 
+                // 리셋 애니메이션 중이었다면 즉시 중단!
+                controls.addEventListener('start', () => {
+                    isResetting = false; });
+            }
             if (controls.enabled) controls.update();
-            
-            controls.addEventListener('start', () => {
-                isResetting = false; // 리셋 애니메이션 중이었다면 즉시 중단!
-            });
+
             effect.render(scene, activeCamera);
         }
 

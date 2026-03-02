@@ -245,8 +245,28 @@
                     uiElements.forEach(el => el.classList.remove('is-visible'));
                     document.body.classList.add('hide-cursor');
                 }
-            }, 250);
+            }, 2500);
         }
+
+        // 1. 툰 명암의 단계를 결정할 그라데이션 텍스처 생성
+        function createGradientTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 4;
+            canvas.height = 1;
+            const ctx = canvas.getContext('2d');
+            // 4단계 계단식 명암 (0~255)
+            const colors = ['#333', '#666', '#999', '#ffffff'];
+            colors.forEach((color, i) => {
+                ctx.fillStyle = color;
+                ctx.fillRect(i, 0, 1, 1);
+            });
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.magFilter = THREE.NearestFilter;
+            texture.minFilter = THREE.NearestFilter;
+            return texture;
+        }
+        
+        const toonGradient = createGradientTexture();
 
         function loadModel(data) {
             const loader = new GLTFLoader();
@@ -258,9 +278,12 @@
                 // 툰 쉐이딩 재질 적용
                 currentModel.traverse(c => {
                     if (c.isMesh) {
-                        c.material = new THREE.MeshToonMaterial({ 
-                            color: c.material.color, 
-                            map: c.material.map 
+                    const oldMat = c.material; // 블렌더에서 넘어온 원본 PBR 재질
+                        
+                    c.material = new THREE.MeshToonMaterial({
+                        color: oldMat.color,
+                        map: oldMat.map,
+                        gradientMap: toonGradient
                         });
                     }
                 });
